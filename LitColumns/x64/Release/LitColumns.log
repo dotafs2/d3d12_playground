@@ -1,0 +1,16 @@
+﻿  Camera.cpp
+  d3dApp.cpp
+  d3dUtil.cpp
+  DDSTextureLoader.cpp
+  FrameResource.cpp
+  GameTimer.cpp
+  GeometryGenerator.cpp
+  MathHelper.cpp
+  LitColumnsApp.cpp
+  ShadowMap.cpp
+  Generating code
+  2211 of 2230 functions (99.1%) were compiled, the rest were copied from previous compilation.
+    8 functions were new in current compilation
+    2 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  LitColumns.vcxproj -> C:\Users\fsqu\Desktop\d3d12_playground\x64\Release\LitColumns.exe
