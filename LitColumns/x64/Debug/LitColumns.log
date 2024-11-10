@@ -1,5 +1,12 @@
-﻿  d3dUtil.cpp
+﻿  Camera.cpp
+  d3dApp.cpp
+  d3dUtil.cpp
+  DDSTextureLoader.cpp
+  FrameResource.cpp
+  GameTimer.cpp
+  GeometryGenerator.cpp
+  MathHelper.cpp
   LitColumnsApp.cpp
-D:\d3d12_playground\LitColumnsApp.cpp(637,22): warning C4267: 'argument': conversion from 'size_t' to 'UINT', possible loss of data
+  ShadowMap.cpp
   Generating Code...
   LitColumns.vcxproj -> D:\d3d12_playground\x64\Debug\LitColumns.exe
