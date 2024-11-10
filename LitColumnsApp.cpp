@@ -672,7 +672,7 @@ void LitColumnsApp::BuildShapeGeometry()
 {
     GeometryGenerator geoGen;
 	GeometryGenerator::MeshData box = geoGen.CreateBox(0.5f, 0.5f, 0.5f, 3);
-	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 20.0f, 2, 2);
+	GeometryGenerator::MeshData grid = geoGen.CreateGrid(60.0f, 60.0f, 2, 2);
 	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
 
 	// Cache the vertex offsets to each object in the concatenated vertex buffer.
@@ -771,7 +771,7 @@ void LitColumnsApp::BuildShapeGeometry()
 void LitColumnsApp::BuildDescriptorHeaps()
 {
 	//
-	// Create the SRV heap.
+	// 创建 SRV 描述符堆
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
 	srvHeapDesc.NumDescriptors = 7;
@@ -780,55 +780,65 @@ void LitColumnsApp::BuildDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
 
 	//
-	// Fill out the heap with actual descriptors.
+	// 填充描述符堆
 	//
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-
+	// t0 和 t1 对应的纹理列表
 	std::vector<ComPtr<ID3D12Resource>> tex2DList =
 	{
-		mTextures["woodCrateTex"]->Resource,
-		mTextures["floorNor"]->Resource,
+		mTextures["woodCrateTex"]->Resource, // t0
+		mTextures["floorNor"]->Resource      // t1
 	};
 
-
-	// all textures without skybox
-	// common desc
+	// 通用的 SRV 描述
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
+	// 创建 t0 和 t1 的 SRV
 	for (UINT i = 0; i < (UINT)tex2DList.size(); ++i)
 	{
 		srvDesc.Format = tex2DList[i]->GetDesc().Format;
 		srvDesc.Texture2D.MipLevels = tex2DList[i]->GetDesc().MipLevels;
 		md3dDevice->CreateShaderResourceView(tex2DList[i].Get(), &srvDesc, hDescriptor);
-		// next descriptor
+		// 移动到下一个描述符
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 	}
-	
 
-	// skybox
+	// 阴影贴图索引为 t2
+	mShadowMapHeapIndex = (UINT)tex2DList.size(); // 应该是2
+
+	// 创建阴影贴图的描述符
+	mShadowMap->BuildDescriptors(
+		CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
+		CD3DX12_CPU_DESCRIPTOR_HANDLE(mDsvHeap->GetCPUDescriptorHandleForHeapStart(), 1, mDsvDescriptorSize));
+
+	// 移动到下一个描述符
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+
+	// 天空盒纹理索引为 t3
+	mSkyTexHeapIndex = mShadowMapHeapIndex + 1; // 应该是3
+
+	// 创建天空盒的 SRV
 	auto skyTex = mTextures["skyCubeMap"]->Resource;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = skyTex->GetDesc().Format;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
 	srvDesc.TextureCube.MostDetailedMip = 0;
 	srvDesc.TextureCube.MipLevels = skyTex->GetDesc().MipLevels;
 	srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
-	srvDesc.Format = skyTex->GetDesc().Format;
 	md3dDevice->CreateShaderResourceView(skyTex.Get(), &srvDesc, hDescriptor);
 
+	// 移动到下一个描述符
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 
-
-	mSkyTexHeapIndex = (UINT)tex2DList.size();
-
-	// count the skybox index, there are tex2Dlist texture before, so index is tex2Dlist.size() - 1 , which means 
-// skybox index should be tex2DList.size()
-	mShadowMapHeapIndex = mSkyTexHeapIndex + 1;
-	mNullCubeSrvIndex = mShadowMapHeapIndex + 1;
-	mNullTexSrvIndex = mNullCubeSrvIndex + 1;
+	// 空描述符的索引
+	mNullCubeSrvIndex = mSkyTexHeapIndex + 1; // 应该是4
+	mNullTexSrvIndex = mNullCubeSrvIndex + 1; // 应该是5
 
 	auto srvCpuStart = mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 	auto srvGpuStart = mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
@@ -837,20 +847,17 @@ void LitColumnsApp::BuildDescriptorHeaps()
 	auto nullSrv = CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mNullCubeSrvIndex, mCbvSrvUavDescriptorSize);
 	mNullSrv = CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mNullCubeSrvIndex, mCbvSrvUavDescriptorSize);
 
+	// 创建空的 TextureCube SRV
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+	srvDesc.TextureCube.MipLevels = 1;
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
 	nullSrv.Offset(1, mCbvSrvUavDescriptorSize);
 
+	// 创建空的 Texture2D SRV
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = 1;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
-
-	mShadowMap->BuildDescriptors(
-		CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
-		CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvCpuStart, 1, mDsvDescriptorSize));
 }
 
 
